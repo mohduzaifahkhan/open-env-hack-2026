@@ -1,0 +1,23 @@
+Metadata-Version: 2.4
+Name: openenv-smart-factory
+Version: 1.0.0
+Summary: HuggingFace Spaces deployment for Meta OpenEnv Hackathon 2026
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: openenv
+Requires-Dist: pydantic
+Requires-Dist: numpy
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: requests
+Requires-Dist: openenv-core>=0.2.3
+Requires-Dist: huggingface-hub>=1.9.0
+
+# Smart Factory OpenEnv Module
+A ready-to-run Meta OpenEnv component designed around optimal vectorized int8 matrices targeting the 2026 hackathon.
+
+### To Run
+Ensure you operate internal tests by:
+`uv lock`
+`openenv-server start --config openenv.yaml`
+And evaluate via `python inference.py`
