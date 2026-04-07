@@ -21,3 +21,5 @@ dependencies = [
 
 [tool.uv]
 managed = true
+[project.scripts]
+server = "server.app:main"

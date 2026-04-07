@@ -137,3 +137,10 @@ async def step(data: dict):
 @app.get("/state")
 async def state(ctx: dict = {}):
     return env.state(ctx)
+def main():
+    import uvicorn
+    # This makes the main() function callable by the validator
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    main()
