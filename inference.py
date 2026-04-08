@@ -5,20 +5,23 @@ import requests
 from openai import OpenAI
 
 # --- HACKATHON PROXY CONFIGURATION ---
-# These are the exact names the validator uses. Do not change them.
+# The validator INJECTS these variables. You MUST use these exact names.
 API_BASE_URL = os.environ.get("API_BASE_URL")
 API_KEY = os.environ.get("API_KEY")
+# They might also inject a specific MODEL_NAME
 MODEL_NAME = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.2-1B-Instruct")
 
-# Your Space URL
+# Your hosted factory URL
 ENV_API_URL = "https://uzaif1-meta-hack-openenv-26.hf.space"
 
-# Local testing fallback
+# Local testing check
 if not API_BASE_URL or not API_KEY:
-    print("❌ ERROR: API_BASE_URL or API_KEY is missing in environment!")
+    print("❌ ERROR: API_BASE_URL or API_KEY is missing!")
+    print("To test locally, run: set API_BASE_URL=https://api-inference.huggingface.co/v1/")
+    print("and: set API_KEY=your_hf_token")
     sys.exit(1)
 
-# Initialize the OpenAI client as required by the validator
+# Initialize OpenAI client as a "Proxy" to the validator's LiteLLM
 client = OpenAI(
     base_url=API_BASE_URL,
     api_key=API_KEY
@@ -33,7 +36,7 @@ def get_ai_action(observation):
     y, x = observation['robot_pos']
     carrying = observation['carrying']
 
-    # --- MASTER PATHFINDING OVERRIDE (Your Secret Weapon) ---
+    # --- MASTER PATHFINDING OVERRIDE ---
     if y == 0 and x == 0 and carrying == 0:
         return 1
     if carrying == 0:
@@ -61,14 +64,14 @@ def get_ai_action(observation):
         return 0
 
 def main():
-    # Phase 2 REQUIREMENT: START block
+    # Phase 2 REQUIREMENT: [START] block
     print("[START] task=smart_factory", flush=True)
     
     try:
         res = requests.post(f"{ENV_API_URL}/reset", json={"ctx": {}}, timeout=10)
         res.raise_for_status()
         observation = res.json()
-    except Exception as e:
+    except Exception:
         print(f"[END] task=smart_factory score=0 steps=0", flush=True)
         return
 
@@ -90,15 +93,15 @@ def main():
             done = result.get("done", False)
             total_reward += reward
             
-            # Phase 2 REQUIREMENT: STEP block
+            # Phase 2 REQUIREMENT: [STEP] block
             print(f"[STEP] step={step_count} reward={reward}", flush=True)
             
-        except Exception as e:
+        except Exception:
             break
 
         time.sleep(0.1) 
 
-    # Phase 2 REQUIREMENT: END block
+    # Phase 2 REQUIREMENT: [END] block
     print(f"[END] task=smart_factory score={total_reward} steps={step_count}", flush=True)
 
 if __name__ == "__main__":
