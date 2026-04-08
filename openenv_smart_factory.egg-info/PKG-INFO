@@ -12,6 +12,7 @@ Requires-Dist: uvicorn
 Requires-Dist: requests
 Requires-Dist: openenv-core>=0.2.3
 Requires-Dist: huggingface-hub>=1.9.0
+Requires-Dist: openai>=2.30.0
 
 # Smart Factory OpenEnv Module
 A ready-to-run Meta OpenEnv component designed around optimal vectorized int8 matrices targeting the 2026 hackathon.
