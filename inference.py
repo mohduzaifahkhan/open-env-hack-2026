@@ -7,6 +7,7 @@ from openai import OpenAI
 # --- HACKATHON PROXY CONFIGURATION ---
 # The validator INJECTS these variables. You MUST use these exact names.
 API_BASE_URL = os.environ.get("API_BASE_URL")
+print(f"DEBUG: Talking to Proxy at {API_BASE_URL}", flush=True)
 API_KEY = os.environ.get("API_KEY")
 # They might also inject a specific MODEL_NAME
 MODEL_NAME = os.environ.get("MODEL_NAME", "meta-llama/Llama-3.2-1B-Instruct")
