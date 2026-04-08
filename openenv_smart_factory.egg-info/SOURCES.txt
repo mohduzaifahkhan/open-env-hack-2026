@@ -3,6 +3,7 @@ pyproject.toml
 openenv_smart_factory.egg-info/PKG-INFO
 openenv_smart_factory.egg-info/SOURCES.txt
 openenv_smart_factory.egg-info/dependency_links.txt
+openenv_smart_factory.egg-info/entry_points.txt
 openenv_smart_factory.egg-info/requires.txt
 openenv_smart_factory.egg-info/top_level.txt
 server/app.py
