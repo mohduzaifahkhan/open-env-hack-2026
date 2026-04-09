@@ -2,7 +2,7 @@ environment:
   name: "SmartFactoryAssembly"
   version: "1.0.0"
   description: "Meta OpenEnv 2026 Smart Factory Assembly Constraints Task"
-  entrypoint: "server.app:SmartFactoryEnv"
+  endpoint: "https://uzaif1-meta-hack-openenv-26.hf.space"
   metadata:
     max_steps: 100
     category: "manufacturing_rl"
