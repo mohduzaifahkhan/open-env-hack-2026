@@ -1,146 +1,88 @@
-from fastapi import FastAPI
-import numpy as np
-from pydantic import BaseModel, Field
-from typing import Dict, Any, Tuple
-from openenv.core.env_server import Environment
+from fastapi import FastAPI, Request
+import uvicorn
 
-class RobotAction(BaseModel):
-    action: int = Field(
-        ge=0, le=6, 
-        description="0: NOOP, 1: GRAB, 2: PLACE, 3: LEFT, 4: RIGHT, 5: UP, 6: DOWN"
-    )
-
-class FactoryObservation(BaseModel):
-    grid: list[list[int]] = Field(description="5x5 numpy int8 Grid representing the factory floor")
-    robot_pos: list[int] = Field(description="Robot current coordinates [y, x]")
-    carrying: int = Field(description="Part type currently held by the robot (0 if empty)")
-    metrics: Dict[str, float] = Field(default_factory=dict, description="Internal Grader Metrics")
-
-class SmartFactoryEnv(Environment):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.grid_size = 5
-        self.max_steps = 100
-        self.current_step = 0
-        
-        self.grid = np.zeros((self.grid_size, self.grid_size), dtype=np.int8)
-        self.grid[0, 0] = 1 # Bin A Origin
-        self.grid[0, 4] = 2 # Bin B Origin
-        self.grid[4, :] = 3 # Continuous conveyor row
-        
-        self.robot_pos = np.array([2, 2], dtype=np.int8) 
-        self.carrying = np.int8(0)
-        self.sequence_needed = np.array([1, 2, 1, 2], dtype=np.int8) 
-        self.placed_parts = []
-        
-        self.parts_placed = 0
-        self.sequence_breaches = 0
-
-    def reset(self, ctx: dict) -> FactoryObservation:
-        self.current_step = 0
-        self.robot_pos = np.array([2, 2], dtype=np.int8)
-        self.carrying = np.int8(0)
-        self.placed_parts = []
-        self.parts_placed = 0
-        self.sequence_breaches = 0
-        return self._get_obs()
-
-    def _get_obs(self) -> FactoryObservation:
-        metrics = {
-            "parts_placed": float(self.parts_placed),
-            "sequence_breaches": float(self.sequence_breaches)
-        }
-        return FactoryObservation(
-            grid=self.grid.tolist(),
-            robot_pos=self.robot_pos.tolist(),
-            carrying=int(self.carrying),
-            metrics=metrics
-        )
-
-    def step(self, action: RobotAction, ctx: dict) -> Tuple[FactoryObservation, float, bool, Dict[str, Any]]:
-        self.current_step += 1
-        reward = -0.01 
-        done = False
-        
-        act = action.action
-        move_vectors = {
-            3: np.array([0, -1], dtype=np.int8), 
-            4: np.array([0, 1], dtype=np.int8),  
-            5: np.array([-1, 0], dtype=np.int8), 
-            6: np.array([1, 0], dtype=np.int8)   
-        }
-        
-        if 3 <= act <= 6:
-            new_pos = self.robot_pos + move_vectors[act]
-            new_pos = np.clip(new_pos, 0, self.grid_size - 1)
-            
-            if np.array_equal(self.robot_pos, new_pos):
-                reward -= 0.5 
-            else:
-                self.robot_pos = new_pos
-                
-        elif act == 1: 
-            cell_type = self.grid[self.robot_pos[0], self.robot_pos[1]]
-            if self.carrying == 0 and (cell_type == 1 or cell_type == 2):
-                self.carrying = cell_type 
-            else:
-                reward -= 0.5 
-                
-        elif act == 2: 
-            cell_type = self.grid[self.robot_pos[0], self.robot_pos[1]]
-            if self.carrying != 0 and cell_type == 3: 
-                self.placed_parts.append(self.carrying)
-                self.parts_placed += 1
-                reward += 1.0 
-                
-                idx = len(self.placed_parts) - 1
-                if idx < len(self.sequence_needed):
-                    if self.placed_parts[idx] == self.sequence_needed[idx]:
-                        reward += 10.0 
-                    else:
-                        self.sequence_breaches += 1
-                else:
-                    self.sequence_breaches += 1 
-
-                self.carrying = np.int8(0) 
-            else:
-                reward -= 0.5 
-
-        if self.current_step >= self.max_steps:
-            done = True
-        elif len(self.placed_parts) >= len(self.sequence_needed):
-            done = True 
-
-        return self._get_obs(), float(reward), done, {}
-
-    def state(self, ctx: dict) -> FactoryObservation:
-        return self._get_obs()
-
-# 1. Create the Environment instance
-env = SmartFactoryEnv()
-
-# 2. Build the FastAPI app manually
 app = FastAPI()
 
-# 3. Create the endpoints the inference script is looking for
+# Global state to keep track of the robot during the episode
+state = {}
+
+def get_obs():
+    return {
+        "robot_pos": state["robot_pos"],
+        "carrying": state["carrying"],
+        "grid_max": state["grid_max"]
+    }
+@app.get("/")
+async def root():
+    return {
+        "status": "online", 
+        "message": "Smart Factory Environment API is running. Ready for /reset and /step commands."
+    }
 @app.post("/reset")
-async def reset(ctx: dict = {}):
-    return env.reset(ctx)
+async def reset_environment(request: Request):
+    data = await request.json()
+    ctx = data.get("ctx", {})
+    task = ctx.get("task", "smart_factory_easy")
+
+    # Set difficulty based on the task requested by the client
+    if task == "smart_factory_hard":
+        grid_max = 9  # 10x10 grid (0 to 9)
+    elif task == "smart_factory_medium":
+        grid_max = 6  # 7x7 grid (0 to 6)
+    else:
+        grid_max = 4  # 5x5 grid (0 to 4)
+
+    # Reset the robot to the middle of the grid
+    state["robot_pos"] = [grid_max // 2, grid_max // 2]
+    state["carrying"] = 0
+    state["grid_max"] = grid_max
+    state["steps"] = 0
+    state["done"] = False
+
+    return {"observation": get_obs(), "reward": 0.0, "done": False}
 
 @app.post("/step")
-async def step(data: dict):
-    # This maps the incoming JSON to the RobotAction model
-    action_obj = RobotAction(action=data["action"]["action"])
-    obs, reward, done, info = env.step(action_obj, data.get("ctx", {}))
-    return {"observation": obs, "reward": reward, "done": done, "info": info}
+async def step_environment(request: Request):
+    data = await request.json()
+    action = data.get("action", {}).get("action", 0)
 
-@app.get("/state")
-async def state(ctx: dict = {}):
-    return env.state(ctx)
-def main():
-    import uvicorn
-    # This makes the main() function callable by the validator
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    state["steps"] += 1
+    reward = -0.05  # Penalty for every step taken to encourage speed
+    
+    y, x = state["robot_pos"]
+    carrying = state["carrying"]
+    grid_max = state["grid_max"]
+
+    # Process Movement Actions
+    if action == 3 and x > 0: 
+        x -= 1 # LEFT
+    elif action == 4 and x < grid_max: 
+        x += 1 # RIGHT
+    elif action == 5 and y > 0: 
+        y -= 1 # UP
+    elif action == 6 and y < grid_max: 
+        y += 1 # DOWN
+        
+    # Process GRAB Action (Must be at [0,0] and empty-handed)
+    elif action == 1 and y == 0 and x == 0 and carrying == 0:
+        carrying = 1
+        reward += 2.0  # Big reward for grabbing
+        
+    # Process PLACE Action (Must be at bottom row and carrying part)
+    elif action == 2 and y == grid_max and carrying == 1:
+        carrying = 0
+        reward += 5.0  # Massive reward for finishing
+        state["done"] = True
+
+    # Save new state
+    state["robot_pos"] = [y, x]
+    state["carrying"] = carrying
+
+    # Force end if taking too long
+    if state["steps"] >= 50:
+        state["done"] = True
+
+    return {"observation": get_obs(), "reward": reward, "done": state["done"]}
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(app, host="0.0.0.0", port=7860)

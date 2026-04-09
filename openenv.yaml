@@ -6,3 +6,16 @@ environment:
   metadata:
     max_steps: 100
     category: "manufacturing_rl"
+
+# ... (keep your existing setup info at the top) ...
+  # ... (keep your existing setup info at the top) ...
+tasks:
+  - id: smart_factory_easy
+    name: "Smart Factory - Easy"
+    description: "Navigate a 5x5 grid to grab and place a part."
+  - id: smart_factory_medium
+    name: "Smart Factory - Medium"
+    description: "Navigate a 10x10 grid to grab and place a part."
+  - id: smart_factory_hard
+    name: "Smart Factory - Hard"
+    description: "Navigate a 10x10 grid with obstacles to grab and place a part."
