@@ -1,7 +1,3 @@
-openenv
-openenv-core>=0.2.3
-pydantic
-numpy
 fastapi
-uvicorn
-requests
+uvicorn[standard]
+python-multipart
