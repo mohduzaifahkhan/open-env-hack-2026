@@ -1,3 +1,4 @@
 fastapi
 uvicorn[standard]
 python-multipart
+openenv-core>=0.2.0
