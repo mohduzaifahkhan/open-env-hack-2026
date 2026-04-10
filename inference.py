@@ -69,7 +69,7 @@ AI: The current value of carrying is 1. The current value of y is {grid_max}. Th
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_state}
             ],
-            max_tokens=60,
+            max_tokens=200,
             temperature=0.01
         )
         ai_response = response.choices[0].message.content.strip()
