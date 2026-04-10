@@ -24,40 +24,24 @@ def get_ai_action(observation):
     
     # --- DYNAMIC FEW-SHOT PROMPT ---
     # --- DYNAMIC DECISION TREE PROMPT ---
-    SYSTEM_PROMPT = f"""You are a simple robot on a grid. Follow these strict mathematical rules:
+    SYSTEM_PROMPT = """You are a precise robotic controller. You must strictly evaluate your current state (y, x, carrying) against the following Decision Tree.
 
-IF carrying=0 (Goal is y=0, x=0):
-- Rule A: If y > 0 -> output UP [5]
-- Rule B: If y == 0 and x > 0 -> output LEFT [3]
-- Rule C: If y == 0 and x == 0 -> output GRAB [1]
+DECISION TREE:
+Rule 1: If carrying == 0 AND y > 0 -> Output [5]
+Rule 2: If carrying == 0 AND y == 0 AND x > 0 -> Output [3]
+Rule 3: If carrying == 0 AND y == 0 AND x == 0 -> Output [1]
+Rule 4: If carrying == 1 AND y < grid_max -> Output [6]
+Rule 5: If carrying == 1 AND y == grid_max -> Output [2]
 
-IF carrying=1 (Goal is y={grid_max}):
-- Rule D: If y < {grid_max} -> output DOWN [6]
-- Rule E: If y == {grid_max} -> output PLACE [2]
+You MUST format your response exactly like the example below. Do not write sentences.
 
-OUTPUT FORMAT:
-You must output in this exact sequence:
-1. Explicitly state the current value of carrying.
-2. Explicitly state the current value of y.
-3. Explicitly state the current value of x.
-4. Select the matching rule based strictly on those values.
-5. Output the action in brackets.
-
-EXAMPLES:
-State: y=2, x=2, carrying=0, grid_max={grid_max}
-AI: The current value of carrying is 0. The current value of y is 2. The current value of x is 2. carrying is 0 and y is > 0, so I follow Rule A. UP [5]
-
-State: y=0, x=3, carrying=0, grid_max={grid_max}
-AI: The current value of carrying is 0. The current value of y is 0. The current value of x is 3. carrying is 0, y is 0, and x is > 0, so I follow Rule B. LEFT [3]
-
-State: y=0, x=0, carrying=0, grid_max={grid_max}
-AI: The current value of carrying is 0. The current value of y is 0. The current value of x is 0. carrying is 0, y is 0, and x is 0, so I follow Rule C. GRAB [1]
-
-State: y=0, x=0, carrying=1, grid_max={grid_max}
-AI: The current value of carrying is 1. The current value of y is 0. The current value of x is 0. carrying is 1 and y is < {grid_max}, so I follow Rule D. DOWN [6]
-
-State: y={grid_max}, x=0, carrying=1, grid_max={grid_max}
-AI: The current value of carrying is 1. The current value of y is {grid_max}. The current value of x is 0. carrying is 1 and y is == {grid_max}, so I follow Rule E. PLACE [2]
+EXAMPLE OUTPUT:
+y=0
+x=2
+carrying=0
+Rule 1: False
+Rule 2: True
+Action: [3]
 """
 
     user_state = f"State: y={y}, x={x}, carrying={carrying}, grid_max={grid_max}\nAI:"
