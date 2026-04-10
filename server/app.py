@@ -94,3 +94,11 @@ async def step_environment(request: Request):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=7860)
+    # ... (all your existing FastAPI routes go above this) ...
+
+def main():
+    """Entry point for the OpenEnv multi-mode deployment validator."""
+    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
+
+if __name__ == '__main__':
+    main()

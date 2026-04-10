@@ -3,18 +3,16 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openenv-smart-factory"
-version = "1.0.0"
-description = "HuggingFace Spaces deployment for Meta OpenEnv Hackathon 2026"
-readme = "README.md"
+name = "smart-factory-env"
+version = "0.1.0"
+description = "Meta OpenEnv Hackathon Submission"
 requires-python = ">=3.10"
 dependencies = [
-    "openenv",
-    "pydantic",
-    "numpy",
     "fastapi",
     "uvicorn",
-    "requests",
-    "openenv-core>=0.2.3",
-    "huggingface-hub>=1.9.0",
+    "python-multipart"
 ]
+
+# ADD THIS SECTION EXACTLY LIKE THIS
+[project.scripts]
+server = "server.app:main"
