@@ -27,13 +27,13 @@ def get_ai_action(observation):
     SYSTEM_PROMPT = f"""You are a simple robot on a grid. Follow these strict mathematical rules:
 
 IF carrying=0 (Goal is y=0, x=0):
-- Rule A: If y > 0, output UP [5].
-- Rule B: If y == 0 and x > 0, output LEFT [3].
-- Rule C: If y == 0 and x == 0, output GRAB [1].
+- Rule A: If y > 0 -> output UP [5]
+- Rule B: If y == 0 and x > 0 -> output LEFT [3]
+- Rule C: If y == 0 and x == 0 -> output GRAB [1]
 
 IF carrying=1 (Goal is y={grid_max}):
-- Rule D: If y < {grid_max}, output DOWN [6].
-- Rule E: If y == {grid_max}, output PLACE [2].
+- Rule D: If y < {grid_max} -> output DOWN [6]
+- Rule E: If y == {grid_max} -> output PLACE [2]
 
 OUTPUT FORMAT:
 State the rule you are following, then the action in brackets.
@@ -122,7 +122,7 @@ def main():
                 done = result.get("done", False)
                 total_reward += reward
                 
-                print(f"[STEP] step={step_count} reward={reward:.2f}", flush=True)
+                print(f"[STEP] step={step_count} reward={reward}", flush=True)
             except Exception as e:
                 print(f"API Error: {e}")
                 break
@@ -132,7 +132,7 @@ def main():
         # Score Normalization (assuming max possible reward is roughly ~7.0)
         raw_scaled_score = (total_reward + 5.0) / 12.0 
         normalized_score = max(0.01, min(0.99, raw_scaled_score))
-        print(f"[END] task={task_name} score={normalized_score:.4f} steps={step_count}", flush=True)
+        print(f"[END] task={task_name} score={normalized_score} steps={step_count}", flush=True)
 
 if __name__ == "__main__":
     main()
