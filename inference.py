@@ -36,28 +36,32 @@ IF carrying=1 (Goal is y={grid_max}):
 - Rule E: If y == {grid_max} -> output PLACE [2]
 
 OUTPUT FORMAT:
-State the rule you are following, then the action in brackets.
+You must output in this exact sequence:
+1. Explicitly state the current value of carrying.
+2. Explicitly state the current value of y.
+3. Explicitly state the current value of x.
+4. Select the matching rule based strictly on those values.
+5. Output the action in brackets.
 
 EXAMPLES:
 State: y=2, x=2, carrying=0, grid_max={grid_max}
-AI: carrying=0 and y is > 0, so I follow Rule A. UP [5]
+AI: The current value of carrying is 0. The current value of y is 2. The current value of x is 2. carrying is 0 and y is > 0, so I follow Rule A. UP [5]
 
 State: y=0, x=3, carrying=0, grid_max={grid_max}
-AI: carrying=0 and y=0 but x > 0, so I follow Rule B. LEFT [3]
+AI: The current value of carrying is 0. The current value of y is 0. The current value of x is 3. carrying is 0, y is 0, and x is > 0, so I follow Rule B. LEFT [3]
 
 State: y=0, x=0, carrying=0, grid_max={grid_max}
-AI: carrying=0 and I am at 0,0, so I follow Rule C. GRAB [1]
+AI: The current value of carrying is 0. The current value of y is 0. The current value of x is 0. carrying is 0, y is 0, and x is 0, so I follow Rule C. GRAB [1]
 
 State: y=0, x=0, carrying=1, grid_max={grid_max}
-AI: carrying=1 and y < {grid_max}, so I follow Rule D. DOWN [6]
+AI: The current value of carrying is 1. The current value of y is 0. The current value of x is 0. carrying is 1 and y is < {grid_max}, so I follow Rule D. DOWN [6]
 
 State: y={grid_max}, x=0, carrying=1, grid_max={grid_max}
-AI: carrying=1 and y == {grid_max}, so I follow Rule E. PLACE [2]
+AI: The current value of carrying is 1. The current value of y is {grid_max}. The current value of x is 0. carrying is 1 and y is == {grid_max}, so I follow Rule E. PLACE [2]
 """
 
-
     user_state = f"State: y={y}, x={x}, carrying={carrying}, grid_max={grid_max}\nAI:"
-    
+
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
