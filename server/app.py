@@ -1,104 +1,54 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-import uvicorn
+# Copyright (c) 2026 TRIBUNAL Team.
+# Smart Factory Assembly — FastAPI Server Application.
 
-app = FastAPI()
+"""
+FastAPI application for the Smart Factory Environment.
 
-# Global state
-state = {"robot_pos": [2, 2], "carrying": 0, "grid_max": 4, "steps": 0, "done": False}
+Exposes the SmartFactoryEnvironment over HTTP and WebSocket endpoints
+using OpenEnv's ``create_app()`` helper.  This provides:
 
-def get_obs():
-    return {
-        "robot_pos": state.get("robot_pos", [0, 0]),
-        "carrying": state.get("carrying", 0),
-        "grid_max": state.get("grid_max", 4)
-    }
+- ``POST /reset``  — reset endpoint
+- ``POST /step``   — step endpoint
+- ``GET /health``  — health check
+- ``GET /schema``  — JSON schemas for Action / Observation / State
+- ``WebSocket /ws`` — persistent session endpoint
+- Web interface (when ``ENABLE_WEB_INTERFACE=true``)
 
-@app.get("/")
-async def root():
-    return {"status": "online"}
+Usage:
+    uvicorn server.app:app --host 0.0.0.0 --port 7860
+"""
 
-@app.post("/reset")
-async def reset_environment(request: Request):
-    try:
-        # Extra safety: check if body exists before parsing
-        body = await request.json() if await request.body() else {}
-    except Exception:
-        body = {}
+import sys
+import os
 
-    ctx = body.get("ctx", {})
-    # Use .get() everywhere to prevent KeyErrors
-    task = str(ctx.get("task", "smart_factory_easy")).lower()
+# Ensure parent directory is on path for model imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    if "hard" in task:
-        grid_max = 9
-    elif "medium" in task:
-        grid_max = 6
-    else:
-        grid_max = 4
+try:
+    from openenv.core.env_server.http_server import create_app
+except ImportError:
+    from openenv.core.env_server.http_server import create_app
 
-    state["robot_pos"] = [grid_max // 2, grid_max // 2]
-    state["carrying"] = 0
-    state["grid_max"] = grid_max
-    state["steps"] = 0
-    state["done"] = False
+from models import FactoryAction, FactoryObservation
+from server.environment import SmartFactoryEnvironment
 
-    return JSONResponse(content={
-        "observation": get_obs(),
-        "reward": 0.0,
-        "done": False
-    })
+# Create the OpenEnv HTTP app.
+# Pass the CLASS (factory) — not an instance — so each WebSocket session
+# gets its own isolated environment instance.
+app = create_app(
+    SmartFactoryEnvironment,
+    FactoryAction,
+    FactoryObservation,
+    env_name="smart_factory",
+)
 
-@app.post("/step")
-async def step_environment(request: Request):
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-        
-    # Standardize action extraction
-    action_data = body.get("action", {})
-    if isinstance(action_data, dict):
-        action = action_data.get("action", 0)
-    else:
-        action = action_data
-
-    state["steps"] += 1
-    reward = -0.05 
-    
-    y, x = state["robot_pos"]
-    carrying = state["carrying"]
-    grid_max = state["grid_max"]
-
-    if action == 3 and x > 0: x -= 1
-    elif action == 4 and x < grid_max: x += 1
-    elif action == 5 and y > 0: y -= 1
-    elif action == 6 and y < grid_max: y += 1
-    elif action == 1 and y == 0 and x == 0 and carrying == 0:
-        carrying = 1
-        reward += 2.0
-    elif action == 2 and y == grid_max and carrying == 1:
-        carrying = 0
-        reward += 5.0
-        state["done"] = True
-
-    state["robot_pos"] = [y, x]
-    state["carrying"] = carrying
-    if state["steps"] >= 50: state["done"] = True
-
-    return JSONResponse(content={
-        "observation": get_obs(),
-        "reward": reward,
-        "done": state["done"]
-    })
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=7860)
-    # ... (all your existing FastAPI routes go above this) ...
 
 def main():
-    """Entry point for the OpenEnv multi-mode deployment validator."""
-    uvicorn.run("server.app:app", host="0.0.0.0", port=7860)
+    """Entry point for ``uv run --project . server`` or direct execution."""
+    import uvicorn
 
-if __name__ == '__main__':
+    uvicorn.run(app, host="0.0.0.0", port=7860)
+
+
+if __name__ == "__main__":
     main()
