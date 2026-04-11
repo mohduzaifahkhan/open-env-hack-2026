@@ -1,3 +1,18 @@
+---
+title: Smart Factory Environment
+emoji: 🏭
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
+# 🏭 TRIBUNAL: Smart Factory Environment (OpenEnv)
+**A Meta x PyTorch OpenEnv Hackathon 2026 Submission**
+
+TRIBUNAL is a robust, OpenEnv-compliant factory logistics simulation built on the standard `openenv-core>=0.2.2` framework.
+
 # 🏭 TRIBUNAL: Smart Factory Assembly Environment
 
 **OpenEnv-compliant multi-difficulty manufacturing RL environment**
@@ -198,4 +213,5 @@ open-env-hack-2026/
 
 BSD-3-Clause — see [LICENSE](LICENSE) for details.
 
-Built with ❤️ for the Meta PyTorch OpenEnv Hackathon 2026.
+Built with ❤️ for the Meta PyTorch OpenEnv Hackathon 2026..
+

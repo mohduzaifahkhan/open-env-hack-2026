@@ -1,5 +1,5 @@
 # Copyright (c) 2026 TRIBUNAL Team.
-# Smart Factory Assembly — Dockerfile for HuggingFace Spaces.
+# Smart Factory Assembly - Dockerfile for HuggingFace Spaces.
 
 FROM python:3.10-slim
 
@@ -11,12 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project metadata and install deps first (better layer caching)
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-
-# Copy full project
+# 1. COPY EVERYTHING FIRST (This fixes the cache miss!)
 COPY . .
+
+# 2. NOW INSTALL (So pip can see your /server folder)
+RUN pip install --no-cache-dir .
 
 # Expose the HuggingFace Spaces port
 EXPOSE 7860
