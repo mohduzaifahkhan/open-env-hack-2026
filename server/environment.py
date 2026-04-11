@@ -25,12 +25,8 @@ import random
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-try:
-    from openenv.core.env_server.interfaces import Environment
-    from openenv.core.env_server.types import EnvironmentMetadata
-except ImportError:
-    from openenv.core.env_server.interfaces import Environment
-    from openenv.core.env_server.types import EnvironmentMetadata
+from openenv.core.env_server.interfaces import Environment
+from openenv.core.env_server.types import EnvironmentMetadata
 
 import sys
 import os
@@ -193,7 +189,8 @@ class SmartFactoryEnvironment(
         **kwargs: Any,
     ) -> FactoryObservation:
         """Reset the environment and return the initial observation."""
-        self._reset_rubric()
+        if hasattr(self, '_reset_rubric'):
+            self._reset_rubric()
 
         if seed is not None:
             random.seed(seed)
@@ -310,9 +307,6 @@ class SmartFactoryEnvironment(
             new_y = y - 1
         elif act == A_DOWN:
             new_y = y + 1
-
-        new_y = max(0, min(self._grid_size - 1, new_y))
-        new_x = max(0, min(self._grid_size - 1, new_x))
 
         if act in (A_LEFT, A_RIGHT, A_UP, A_DOWN):
             # Boundary check
@@ -538,7 +532,7 @@ class SmartFactoryEnvironment(
 
         # Conveyor belt movement: shift robot if on conveyor
         ry, rx = self._robot_pos
-        if (ry, rx) in [(cy, cx) for cy, cx in self._conveyor_positions]:
+        if (ry, rx) in self._conveyor_positions:
             # Conveyors push DOWN
             new_ry = ry + 1
             if new_ry < self._grid_size and self._grid[new_ry][rx] != WALL:

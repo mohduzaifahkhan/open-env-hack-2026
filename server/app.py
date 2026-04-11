@@ -24,10 +24,7 @@ import os
 # Ensure parent directory is on path for model imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-try:
-    from openenv.core.env_server.http_server import create_app
-except ImportError:
-    from openenv.core.env_server.http_server import create_app
+from openenv.core.env_server.http_server import create_app
 
 from models import FactoryAction, FactoryObservation
 from server.environment import SmartFactoryEnvironment

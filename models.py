@@ -26,10 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import Field
 
-try:
-    from openenv.core.env_server.types import Action, Observation, State
-except ImportError:
-    from openenv.core.env_server.types import Action, Observation, State
+from openenv.core.env_server.types import Action, Observation, State
 
 
 # ---------------------------------------------------------------------------
