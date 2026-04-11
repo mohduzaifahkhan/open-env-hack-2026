@@ -1,9 +1,16 @@
 README.md
 pyproject.toml
+./__init__.py
+./client.py
+./inference.py
+./models.py
+./test_smoke.py
 openenv_smart_factory.egg-info/PKG-INFO
 openenv_smart_factory.egg-info/SOURCES.txt
 openenv_smart_factory.egg-info/dependency_links.txt
 openenv_smart_factory.egg-info/entry_points.txt
 openenv_smart_factory.egg-info/requires.txt
 openenv_smart_factory.egg-info/top_level.txt
+server/__init__.py
 server/app.py
+server/environment.py
