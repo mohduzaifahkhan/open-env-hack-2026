@@ -8,13 +8,21 @@ A multi-difficulty manufacturing RL environment where an AI agent must
 navigate a grid, pick up parts from stations, and deliver them to dropoff
 zones while avoiding obstacles and hazard zones.
 
+Features:
+- 3 difficulty tiers (easy, medium, hard)
+- Assembly line mechanic with sequence bonuses
+- Quality inspection system (hard mode)
+- Built-in grading rubric with 5 performance metrics
+- Stochastic events (breakdowns, conveyor drift)
+
 Difficulty tiers
 -----------------
 - **easy** (5×5):   1 pickup, 1 dropoff, no obstacles, 1 part type, 50 steps.
 - **medium** (7×7): 2 pickups, 1 dropoff, walls + hazards, 2 part types,
                      ordered delivery, 75 steps.
 - **hard** (10×10): 3 pickups, 2 dropoffs, walls + hazards + conveyors,
-                     3 part types, ordered delivery, stochastic events, 120 steps.
+                     3 part types, ordered delivery, stochastic events,
+                     quality inspection, 120 steps.
 """
 
 from __future__ import annotations
@@ -78,6 +86,7 @@ DIFFICULTY_CONFIG = {
         "ordered_delivery": False,
         "stochastic": False,
         "breakdown_chance": 0.0,
+        "quality_inspection": False,
     },
     "smart_factory_medium": {
         "grid_size": 7,
@@ -92,6 +101,7 @@ DIFFICULTY_CONFIG = {
         "ordered_delivery": True,
         "stochastic": False,
         "breakdown_chance": 0.0,
+        "quality_inspection": False,
     },
     "smart_factory_hard": {
         "grid_size": 10,
@@ -110,6 +120,7 @@ DIFFICULTY_CONFIG = {
         "ordered_delivery": True,
         "stochastic": True,
         "breakdown_chance": 0.05,
+        "quality_inspection": True,
     },
 }
 
@@ -129,6 +140,7 @@ class SmartFactoryEnvironment(
     OpenEnv-compliant Smart Factory Assembly environment.
 
     Follows the Gymnasium-style API: ``reset()``, ``step(action)``, ``state``.
+    Features grading rubric, assembly line mechanics, and quality inspection.
     """
 
     SUPPORTS_CONCURRENT_SESSIONS = True
@@ -158,6 +170,9 @@ class SmartFactoryEnvironment(
         self._next_delivery_idx: int = 0
         self._ordered_delivery: bool = False
 
+        # Assembly line tracking
+        self._assembly_progress: List[str] = []
+
         # Part availability at pickups
         self._pickup_parts: Dict[Tuple[int, int], str] = {}
         self._pickup_positions: List[Tuple[int, int]] = []
@@ -169,14 +184,73 @@ class SmartFactoryEnvironment(
         self._broken_pickups: set = set()
         self._conveyor_positions: List[Tuple[int, int]] = []
 
+        # Quality inspection system
+        self._quality_inspection: bool = False
+        self._part_qualities: Dict[Tuple[int, int], str] = {}  # pos -> "good"/"defective"
+        self._inspected_stations: set = set()
+
         # Previous distance for reward shaping
         self._prev_distance: float = 0.0
 
         # Inventory tracking (what's still needed)
         self._inventory: Dict[str, int] = {}
 
+        # Grading rubric
+        self._hazard_steps: int = 0
+        self._rubric: Dict[str, float] = {}
+
         # Config reference
         self._config: Dict[str, Any] = {}
+
+    # -----------------------------------------------------------------------
+    # Grading Rubric
+    # -----------------------------------------------------------------------
+
+    def _reset_rubric(self) -> None:
+        """Initialize the grading rubric for a new episode."""
+        self._rubric = {
+            "completion_rate": 0.0,
+            "efficiency": 0.0,
+            "collision_rate": 0.0,
+            "hazard_exposure": 0.0,
+            "speed_score": 0.0,
+            "overall_score": 0.0,
+        }
+        self._hazard_steps = 0
+
+    def _update_rubric(self) -> None:
+        """Recalculate all rubric metrics based on current state."""
+        steps = max(1, self._step_count)
+
+        self._rubric["completion_rate"] = (
+            self._deliveries_made / max(1, self._deliveries_required)
+        )
+        self._rubric["efficiency"] = min(
+            1.0, self._deliveries_made / (steps * 0.05)
+        )
+        self._rubric["collision_rate"] = min(1.0, self._collisions / steps)
+        self._rubric["hazard_exposure"] = min(1.0, self._hazard_steps / steps)
+
+        if self._done and self._deliveries_made >= self._deliveries_required:
+            time_remaining = max(0, self._max_steps - self._step_count)
+            self._rubric["speed_score"] = time_remaining / self._max_steps
+        else:
+            self._rubric["speed_score"] = 0.0
+
+        # Weighted overall score
+        self._rubric["overall_score"] = round(
+            0.40 * self._rubric["completion_rate"]
+            + 0.25 * self._rubric["efficiency"]
+            + 0.15 * (1.0 - self._rubric["collision_rate"])
+            + 0.10 * (1.0 - self._rubric["hazard_exposure"])
+            + 0.10 * self._rubric["speed_score"],
+            4,
+        )
+
+    def get_rubric(self) -> Dict[str, float]:
+        """Return the current grading rubric."""
+        self._update_rubric()
+        return dict(self._rubric)
 
     # -----------------------------------------------------------------------
     # reset
@@ -189,8 +263,7 @@ class SmartFactoryEnvironment(
         **kwargs: Any,
     ) -> FactoryObservation:
         """Reset the environment and return the initial observation."""
-        if hasattr(self, '_reset_rubric'):
-            self._reset_rubric()
+        self._reset_rubric()
 
         if seed is not None:
             random.seed(seed)
@@ -215,6 +288,7 @@ class SmartFactoryEnvironment(
         self._ordered_delivery = cfg["ordered_delivery"]
         self._stochastic = cfg["stochastic"]
         self._breakdown_chance = cfg["breakdown_chance"]
+        self._quality_inspection = cfg.get("quality_inspection", False)
 
         # Build grid
         gs = self._grid_size
@@ -246,10 +320,22 @@ class SmartFactoryEnvironment(
         self._delivery_order = parts[:self._deliveries_required]
         self._next_delivery_idx = 0
 
+        # Assembly line progress
+        self._assembly_progress = []
+
         # Inventory = what still needs to be delivered
         self._inventory = {}
         for p in self._delivery_order:
             self._inventory[p] = self._inventory.get(p, 0) + 1
+
+        # Quality inspection: assign random quality to each pickup
+        self._part_qualities = {}
+        self._inspected_stations = set()
+        if self._quality_inspection:
+            for pos in self._pickup_positions:
+                self._part_qualities[pos] = (
+                    "good" if random.random() < 0.85 else "defective"
+                )
 
         # Robot starts near center
         center = gs // 2
@@ -266,6 +352,7 @@ class SmartFactoryEnvironment(
         self._deliveries_made = 0
         self._collisions = 0
         self._broken_pickups = set()
+        self._hazard_steps = 0
 
         # Initial distance
         self._prev_distance = self._compute_target_distance()
@@ -321,6 +408,7 @@ class SmartFactoryEnvironment(
                     # Hazard penalty
                     if cell == HAZARD:
                         reward += -0.5
+                        self._hazard_steps += 1
             else:
                 # Hit boundary — treat as collision
                 reward += -1.0
@@ -338,14 +426,21 @@ class SmartFactoryEnvironment(
                 self._carrying = 1
                 self._carrying_type = part_type
 
-                # Quality multiplier: correct order = 1.0, wrong = 0.5
+                # Quality check — defective parts give reduced reward
+                quality_multiplier = 1.0
+                if self._quality_inspection:
+                    quality = self._part_qualities.get(pos_tuple, "good")
+                    if quality == "defective":
+                        quality_multiplier = 0.3
+
+                # Assembly sequence multiplier
                 if self._ordered_delivery and self._next_delivery_idx < len(self._delivery_order):
                     expected = self._delivery_order[self._next_delivery_idx]
-                    quality = 1.0 if part_type == expected else 0.5
+                    sequence_quality = 1.0 if part_type == expected else 0.5
                 else:
-                    quality = 1.0
+                    sequence_quality = 1.0
 
-                reward += 2.0 * quality
+                reward += 2.0 * sequence_quality * quality_multiplier
             else:
                 reward += -0.1  # useless grab
 
@@ -365,10 +460,29 @@ class SmartFactoryEnvironment(
                         correct_order = False
 
                 if correct_order:
+                    # Check quality — defective parts don't count
+                    is_defective = False
+                    if self._quality_inspection and part_type:
+                        # Check if the part came from a defective station
+                        for pos, ptype in self._pickup_parts.items():
+                            if ptype == part_type and self._part_qualities.get(pos) == "defective":
+                                is_defective = True
+                                break
+
                     self._carrying = 0
                     self._carrying_type = None
                     self._deliveries_made += 1
                     self._next_delivery_idx += 1
+
+                    # Track assembly progress
+                    if part_type:
+                        self._assembly_progress.append(part_type)
+
+                    # Assembly sequence bonus
+                    assembly_bonus = 1.0
+                    if len(self._assembly_progress) == len(self._delivery_order):
+                        if self._assembly_progress == self._delivery_order:
+                            assembly_bonus = 1.5  # Perfect assembly sequence!
 
                     # Decrement inventory
                     if part_type and part_type in self._inventory:
@@ -379,7 +493,11 @@ class SmartFactoryEnvironment(
                     # Speed bonus
                     steps_fraction = self._step_count / self._max_steps
                     speed_bonus = max(0.0, 2.0 * (1.0 - steps_fraction))
-                    reward += 5.0 + speed_bonus
+
+                    if is_defective:
+                        reward += 0.5  # Reduced reward for defective part
+                    else:
+                        reward += (5.0 + speed_bonus) * assembly_bonus
 
                     # Check completion
                     if self._deliveries_made >= self._deliveries_required:
@@ -397,8 +515,13 @@ class SmartFactoryEnvironment(
 
         # --- INSPECT ---
         elif act == A_INSPECT:
-            # Costs a step but reveals useful info via metadata
-            pass  # no extra reward
+            pos_tuple = (self._robot_pos[0], self._robot_pos[1])
+            if self._quality_inspection and pos_tuple in self._pickup_parts:
+                self._inspected_stations.add(pos_tuple)
+                # Small reward for smart inspection
+                if pos_tuple not in self._inspected_stations:
+                    reward += 0.1
+            # Costs a step but reveals quality info via metadata
 
         # --- Distance-based reward shaping ---
         curr_distance = self._compute_target_distance()
@@ -420,6 +543,9 @@ class SmartFactoryEnvironment(
                 reward += 1.0 * completion_frac
 
         self._total_reward += reward
+
+        # Update rubric
+        self._update_rubric()
 
         return self._make_observation(reward=reward)
 
@@ -453,11 +579,12 @@ class SmartFactoryEnvironment(
         return EnvironmentMetadata(
             name="SmartFactoryAssembly",
             description=(
-                "Multi-difficulty manufacturing RL environment. "
-                "Navigate a grid, pick up parts, deliver them in order "
-                "while avoiding obstacles, hazards, and stochastic disruptions."
+                "Multi-difficulty manufacturing RL environment with assembly line mechanics. "
+                "Navigate a grid, pick up parts, deliver them in correct assembly order "
+                "while avoiding obstacles, hazards, and stochastic disruptions. "
+                "Features quality inspection, grading rubric, and 3 difficulty tiers."
             ),
-            version="1.0.0",
+            version="2.0.0",
             author="TRIBUNAL Team",
         )
 
@@ -480,6 +607,17 @@ class SmartFactoryEnvironment(
         ry, rx = self._robot_pos
         vis_grid[ry][rx] = ROBOT
 
+        # Build inspection info for metadata
+        inspection_info = {}
+        if self._quality_inspection:
+            for pos in self._inspected_stations:
+                quality = self._part_qualities.get(pos, "unknown")
+                part_type = self._pickup_parts.get(pos, "unknown")
+                inspection_info[f"({pos[0]},{pos[1]})"] = {
+                    "part_type": part_type,
+                    "quality": quality,
+                }
+
         return FactoryObservation(
             robot_pos=list(self._robot_pos),
             carrying=self._carrying,
@@ -491,12 +629,16 @@ class SmartFactoryEnvironment(
             deliveries_made=self._deliveries_made,
             deliveries_required=self._deliveries_required,
             distance_to_target=round(self._compute_target_distance(), 2),
+            assembly_progress=list(self._assembly_progress),
             done=self._done,
             reward=round(reward, 4),
             metadata={
                 "step": self._step_count,
                 "collisions": self._collisions,
+                "hazard_steps": self._hazard_steps,
                 "broken_pickups": list(self._broken_pickups),
+                "inspection_results": inspection_info,
+                "rubric": dict(self._rubric),
             },
         )
 
@@ -542,3 +684,11 @@ class SmartFactoryEnvironment(
         if self._broken_pickups and random.random() < 0.10:
             repaired = random.choice(list(self._broken_pickups))
             self._broken_pickups.discard(repaired)
+
+        # Re-randomize quality for repaired stations
+        if self._quality_inspection:
+            for pos in self._pickup_positions:
+                if pos not in self._part_qualities:
+                    self._part_qualities[pos] = (
+                        "good" if random.random() < 0.85 else "defective"
+                    )

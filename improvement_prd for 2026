@@ -1,0 +1,225 @@
+# 🏭 TRIBUNAL: Improvement PRD — Hackathon Edge
+
+## Current Status
+- ✅ Working environment deployed on HuggingFace Spaces
+- ✅ OpenEnv-compliant (models, client, server, manifest)
+- ✅ LLM agent completing easy tier with 0.95+ score
+- ⚠️ Medium/hard tiers untested in production
+- ❌ No visual demo — judges see only text logs
+- ❌ No auto-grading rubric
+- ❌ Generic grid world — nothing unique
+
+---
+
+## Improvement Matrix
+
+| # | Feature | Impact | Effort | Priority |
+|---|---------|--------|--------|----------|
+| 1 | **Live Visual Renderer** | 🔴 Very High | ~2 hrs | ⭐ P0 |
+| 2 | **Grading Rubric System** | 🔴 Very High | ~1 hr | ⭐ P0 |
+| 3 | **All-Tier Demo Output** | 🟠 High | ~30 min | ⭐ P0 |
+| 4 | **Assembly Line Mechanic** | 🟠 High | ~2 hrs | 🔵 P1 |
+| 5 | **README with Screenshots** | 🟡 Medium | ~1 hr | 🔵 P1 |
+| 6 | **Quality Inspection System** | 🟡 Medium | ~1.5 hrs | 🟢 P2 |
+
+---
+
+## P0 — Must Do (Highest Impact)
+
+### 1. 🖥️ Live Visual Renderer (Web UI)
+
+> [!IMPORTANT]
+> **This is the single highest-impact improvement.** Judges will open your Space and see a real-time animation of the robot navigating, picking up parts, and delivering them. First impressions win hackathons.
+
+**What**: A browser-based grid visualization served at the root `/` URL of the HuggingFace Space.
+
+**Spec**:
+- HTML/CSS/JS page served by the existing FastAPI server
+- Connects via WebSocket to watch live agent runs
+- Shows:
+  - Color-coded grid (walls=gray, hazards=red, pickups=green, dropoffs=blue, robot=yellow)
+  - Robot position animated in real-time
+  - Current carrying status, step count, reward
+  - Delivery progress bar
+  - LLM thought bubble showing AI reasoning
+- "Run Demo" button that triggers inference for a selected difficulty
+- Responsive layout (judges may view on different screens)
+
+**Cell Color Scheme**:
+```
+Empty   = #1a1a2e (dark background)
+Wall    = #4a4a5a (gray blocks)
+Hazard  = #ff4757 (red glow)
+Pickup  = #2ed573 (green pulse)
+Dropoff = #1e90ff (blue pulse)
+Conveyor= #ffa502 (orange arrows)
+Robot   = #ffdd57 (yellow, animated)
+```
+
+**Architecture**:
+```
+Browser ──WebSocket──> FastAPI /ws/viewer
+                        │
+                        ├── receives grid state updates
+                        ├── receives AI thought text
+                        └── renders animated grid
+```
+
+**Files to create/modify**:
+- [NEW] `server/static/index.html` — Full visual renderer
+- [MODIFY] `server/app.py` — Add static file serving + viewer WebSocket endpoint
+
+---
+
+### 2. 📊 Grading Rubric System
+
+> [!IMPORTANT]
+> OpenEnv hackathon likely has auto-grading. Having a built-in rubric with metrics shows deep framework understanding.
+
+**What**: A `_reset_rubric()` / `_update_rubric()` system that tracks performance metrics per episode.
+
+**Spec**:
+- **Metrics tracked**:
+  - `completion_rate` — deliveries_made / deliveries_required (0.0-1.0)
+  - `efficiency` — deliveries / steps_taken (higher = better)
+  - `collision_rate` — collisions / steps_taken (lower = better) 
+  - `hazard_exposure` — hazard_steps / steps_taken (lower = better)
+  - `speed_score` — steps_remaining / max_steps when done (higher = faster)
+  - `overall_score` — weighted combination (0.0-1.0)
+
+- **Weights**:
+  ```
+  overall = 0.40 * completion_rate
+          + 0.25 * efficiency_normalized
+          + 0.15 * (1 - collision_rate)
+          + 0.10 * (1 - hazard_exposure)
+          + 0.10 * speed_score
+  ```
+
+- **Exposed via**:
+  - `GET /metrics` endpoint — returns JSON rubric for current/last episode
+  - `observation.metadata["rubric"]` — included in every step response
+  - Final rubric printed in inference output
+
+**Files to modify**:
+- [MODIFY] `server/environment.py` — Add rubric tracking logic
+- [MODIFY] `server/app.py` — Add `/metrics` endpoint
+
+---
+
+### 3. 📈 All-Tier Demo Output
+
+**What**: Ensure the inference agent completes (or at least runs well on) all 3 tiers, with clean output.
+
+**Spec**:
+- Easy: ≥0.90 score ✅ (already working)
+- Medium: ≥0.50 score (navigate around walls, 2 deliveries)
+- Hard: ≥0.30 score (partial completion is fine — shows the env works)
+- Print a final summary table:
+  ```
+  ╔══════════════════════╦════════════╦═══════╦═══════════╗
+  ║ Task                 ║ Deliveries ║ Steps ║ Score     ║
+  ╠══════════════════════╬════════════╬═══════╬═══════════╣
+  ║ smart_factory_easy   ║ 1/1        ║ 14    ║ 0.9569    ║
+  ║ smart_factory_medium ║ 1/2        ║ 45    ║ 0.4521    ║
+  ║ smart_factory_hard   ║ 1/3        ║ 89    ║ 0.3102    ║
+  ╚══════════════════════╩════════════╩═══════╩═══════════╝
+  ```
+
+**Files to modify**:
+- [MODIFY] `inference.py` — Add summary table at end of `main()`
+
+---
+
+## P1 — Should Do (Differentiators)
+
+### 4. 🔧 Assembly Line Mechanic
+
+> [!TIP]
+> This transforms the env from "generic grid robot" to "actual factory simulation" — making it unique.
+
+**What**: Parts must be assembled in a specific **sequence** (like a real assembly line). Picking gear first, then chip, then frame creates a bonus multiplier.
+
+**Spec**:
+- New observation field: `assembly_progress: List[str]` — shows what's been assembled so far
+- Assembly sequence: `gear → chip → frame` (hard mode)
+- Correct sequence: 1.5x delivery reward multiplier
+- Wrong sequence: 0.5x multiplier + quality warning
+- New cell type: `ASSEMBLY_STATION = 7` — where assembly happens (adjacent to dropoff)
+
+**Impact**: Makes the environment **genuinely different** from other grid-world submissions. Judges see "assembly line" and think "this person understood the factory theme."
+
+**Files to modify**:
+- [MODIFY] `server/environment.py` — Add assembly logic
+- [MODIFY] `models.py` — Add `assembly_progress` field to observation
+
+---
+
+### 5. 📝 README with Screenshots & Demo
+
+**What**: Upgrade README with embedded screenshots, architecture diagrams, and demo output.
+
+**Spec**:
+- Hero screenshot of the visual renderer (once built)
+- Architecture diagram (already in README — refine it)
+- Demo GIF or screenshot of terminal output
+- Clear "How Judges Can Test" section
+- Badges: OpenEnv version, Python version, deployment status
+- Link to live Space prominently at top
+
+**Files to modify**:
+- [MODIFY] `README.md` — Major upgrade
+
+---
+
+## P2 — Nice to Have
+
+### 6. 🔍 Quality Inspection System
+
+**What**: The INSPECT action (already action=8) returns useful quality data about parts.
+
+**Spec**:
+- When robot INSPECTs a pickup station, metadata reveals:
+  - Part quality: "good" (90%), "defective" (10%)
+  - Defective parts give 0x delivery reward
+  - Adds strategic depth — should the agent inspect before grabbing?
+- Only relevant in hard mode (stochastic)
+
+**Files to modify**:
+- [MODIFY] `server/environment.py` — Add quality system to INSPECT action
+
+---
+
+## Recommended Execution Order
+
+```mermaid
+gantt
+    title Implementation Timeline
+    dateFormat HH:mm
+    axisFormat %H:%M
+    
+    section P0 - Must Do
+    Grading Rubric          :a1, 00:00, 60min
+    All-Tier Demo           :a2, after a1, 30min
+    Visual Renderer         :a3, after a2, 120min
+    
+    section P1 - Should Do
+    Assembly Line           :b1, after a3, 120min
+    README Upgrade          :b2, after b1, 60min
+    
+    section P2 - Nice to Have
+    Quality Inspection      :c1, after b2, 90min
+```
+
+**Estimated total**: ~7.5 hours for everything, ~3.5 hours for P0 only.
+
+> [!CAUTION]
+> **Do P0 first.** The visual renderer alone could be the difference between "just another grid world" and "wow, look at this." If you're short on time, skip P1/P2 entirely.
+
+---
+
+## Open Questions
+
+1. **How much time do you have before the deadline?** This determines whether we do P0 only or all of them.
+2. **Do you want the visual renderer to auto-run the agent, or should judges click a button?**
+3. **Should the assembly line mechanic be backward-compatible** (existing easy/medium tiers unchanged)?

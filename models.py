@@ -107,6 +107,10 @@ class FactoryObservation(Observation):
         default=0.0,
         description="Manhattan distance from robot to the current target (pickup or dropoff).",
     )
+    assembly_progress: List[str] = Field(
+        default_factory=list,
+        description="Parts assembled so far in correct sequence (e.g. ['gear', 'chip']).",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -342,6 +342,7 @@ def main():
         pass
 
     tasks = ["smart_factory_easy", "smart_factory_medium", "smart_factory_hard"]
+    all_results = []
 
     for task_name in tasks:
         print(f"\n{'='*60}")
@@ -350,13 +351,38 @@ def main():
 
         try:
             import asyncio
-            asyncio.run(_run_task(task_name))
+            result = asyncio.run(_run_task(task_name))
+            all_results.append(result)
         except Exception as e:
             print(f"❌ Failed to run scenario: {e}")
             print(f"[END] task={task_name} score=0.01 steps=0", flush=True)
+            all_results.append({
+                "task": task_name,
+                "deliveries": "0/?",
+                "steps": 0,
+                "reward": 0.0,
+                "score": 0.01,
+            })
+
+    # ── Summary Table ──
+    print(f"\n{'='*60}")
+    print("📊 FINAL SUMMARY — TRIBUNAL Smart Factory Agent")
+    print(f"{'='*60}")
+    print(f"{'Task':<25} {'Deliveries':>12} {'Steps':>7} {'Reward':>10} {'Score':>8}")
+    print(f"{'-'*25} {'-'*12} {'-'*7} {'-'*10} {'-'*8}")
+    for r in all_results:
+        print(
+            f"{r['task']:<25} {r['deliveries']:>12} "
+            f"{r['steps']:>7} {r['reward']:>10.3f} {r['score']:>8.4f}"
+        )
+    print(f"{'-'*25} {'-'*12} {'-'*7} {'-'*10} {'-'*8}")
+    avg_score = sum(r['score'] for r in all_results) / max(1, len(all_results))
+    print(f"{'AVERAGE':>38} {'':>10} {avg_score:>8.4f}")
+    print(f"Model: {MODEL_NAME}")
+    print(f"{'='*60}\n")
 
 
-async def _run_task(task_name: str):
+async def _run_task(task_name: str) -> dict:
     """Run a single task using the stateful WebSocket client."""
     from client import SmartFactoryEnv
     from models import FactoryAction
@@ -367,6 +393,7 @@ async def _run_task(task_name: str):
     step_count = 0
     done = False
     total_reward = 0.0
+    deliveries_str = "0/?"
 
     # Create conversation history for this task
     history = ConversationHistory(max_entries=3)
@@ -394,12 +421,16 @@ async def _run_task(task_name: str):
                 done = res.done
                 total_reward += reward
 
+                deliveries_str = f"{observation.deliveries_made}/{observation.deliveries_required}"
+                assembly = observation.assembly_progress
+
                 print(
                     f"  [STEP] step={step_count} action={action_val} "
                     f"reward={reward:.3f} total={total_reward:.3f} "
                     f"pos={observation.robot_pos} "
                     f"carrying={observation.carrying} "
-                    f"deliveries={observation.deliveries_made}/{observation.deliveries_required}",
+                    f"deliveries={deliveries_str}"
+                    f"{' assembly=' + str(assembly) if assembly else ''}",
                     flush=True,
                 )
 
@@ -417,6 +448,14 @@ async def _run_task(task_name: str):
 
     print(f"\n📊 Results: total_reward={total_reward:.3f} steps={step_count}")
     print(f"[END] task={task_name} score={normalized_score:.4f} steps={step_count}", flush=True)
+
+    return {
+        "task": task_name,
+        "deliveries": deliveries_str,
+        "steps": step_count,
+        "reward": total_reward,
+        "score": normalized_score,
+    }
 
 
 if __name__ == "__main__":
