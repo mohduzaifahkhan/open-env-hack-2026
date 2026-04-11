@@ -245,64 +245,67 @@ def main():
         print(f"[START] task={task_name}", flush=True)
         print(f"{'='*60}")
 
-        # Reset environment
+        # Make sure to run in async context for the websocket client
         try:
-            payload = {"task": task_name}
-            res = requests.post(f"{ENV_API_URL}/reset", json=payload, timeout=15)
-            res.raise_for_status()
-            result = res.json()
-            observation = result["observation"]
+            import asyncio
+            asyncio.run(_run_task(task_name))
         except Exception as e:
-            print(f"❌ Failed to reset: {e}")
+            print(f"❌ Failed to run scenario: {e}")
             print(f"[END] task={task_name} score=0.01 steps=0", flush=True)
-            continue
 
-        step_count = 0
-        done = False
-        total_reward = 0.0
-        max_steps = 120  # safety cap
 
-        while not done and step_count < max_steps:
-            step_count += 1
-            action = get_ai_action(observation)
+async def _run_task(task_name: str):
+    """Run a single task using the stateful WebSocket client."""
+    from client import SmartFactoryEnv
+    from models import FactoryAction
+    import asyncio
 
-            try:
-                step_payload = {
-                    "action": {"action": action},
-                }
-                res = requests.post(
-                    f"{ENV_API_URL}/step",
-                    json=step_payload,
-                    timeout=15,
-                )
-                result = res.json()
+    # Convert HTTP URL to WS URL
+    ws_url = ENV_API_URL.replace("http://", "ws://").replace("https://", "wss://")
+    if not ws_url.endswith("/ws"):
+        ws_url += "/ws"
 
-                observation = result["observation"]
-                reward = result.get("reward", 0)
-                done = result.get("done", False)
+    step_count = 0
+    done = False
+    total_reward = 0.0
+    max_steps = 120  # safety cap
+
+    print(f"Connecting to {ws_url} ...")
+    try:
+        async with SmartFactoryEnv(base_url=ws_url) as env:
+            # Reset environment
+            res = await env.reset(task=task_name)
+            observation = res.observation
+
+            while not done and step_count < max_steps:
+                step_count += 1
+                action_val = get_ai_action(observation.model_dump())
+
+                res = await env.step(FactoryAction(action=action_val))
+                observation = res.observation
+                reward = res.reward or 0.0
+                done = res.done
                 total_reward += reward
 
                 print(
-                    f"  [STEP] step={step_count} action={action} "
+                    f"  [STEP] step={step_count} action={action_val} "
                     f"reward={reward:.3f} total={total_reward:.3f} "
-                    f"pos={observation.get('robot_pos')} "
-                    f"carrying={observation.get('carrying')} "
-                    f"deliveries={observation.get('deliveries_made', 0)}/{observation.get('deliveries_required', 1)}",
+                    f"pos={observation.robot_pos} "
+                    f"carrying={observation.carrying} "
+                    f"deliveries={observation.deliveries_made}/{observation.deliveries_required}",
                     flush=True,
                 )
+                await asyncio.sleep(0.05)
 
-            except Exception as e:
-                print(f"  ⚠️ API Error: {e}")
-                break
+    except Exception as e:
+        print(f"  ⚠️ API Error: {e}")
 
-            time.sleep(0.05)
+    # Normalize score
+    raw_score = (total_reward + 5.0) / 15.0
+    normalized_score = max(0.01, min(0.99, raw_score))
 
-        # Normalize score
-        raw_score = (total_reward + 5.0) / 15.0
-        normalized_score = max(0.01, min(0.99, raw_score))
-
-        print(f"\n📊 Results: total_reward={total_reward:.3f} steps={step_count}")
-        print(f"[END] task={task_name} score={normalized_score:.4f} steps={step_count}", flush=True)
+    print(f"\n📊 Results: total_reward={total_reward:.3f} steps={step_count}")
+    print(f"[END] task={task_name} score={normalized_score:.4f} steps={step_count}", flush=True)
 
 
 if __name__ == "__main__":

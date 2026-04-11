@@ -289,6 +289,10 @@ class SmartFactoryEnvironment(
         if self._done:
             return self._make_observation(reward=0.0)
 
+        # Safety guard for stateless HTTP calls
+        if not self._grid:
+            self.reset(task=self._task_name)
+
         self._step_count += 1
         act = action.action
         reward = -0.05  # base step cost
@@ -306,6 +310,9 @@ class SmartFactoryEnvironment(
             new_y = y - 1
         elif act == A_DOWN:
             new_y = y + 1
+
+        new_y = max(0, min(self._grid_size - 1, new_y))
+        new_x = max(0, min(self._grid_size - 1, new_x))
 
         if act in (A_LEFT, A_RIGHT, A_UP, A_DOWN):
             # Boundary check
