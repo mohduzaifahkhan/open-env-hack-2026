@@ -8,6 +8,11 @@ app_port: 7860
 pinned: false
 ---
 
+
+
+
+
+
 # 🏭 TRIBUNAL — Smart Factory Assembly
 
 > **AI-Powered Manufacturing RL Environment** • Meta × PyTorch × Scaler OpenEnv Hackathon 2026
