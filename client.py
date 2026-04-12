@@ -50,8 +50,10 @@ class SmartFactoryEnv(EnvClient[FactoryAction, FactoryObservation, FactoryState]
             deliveries_made=obs_data.get("deliveries_made", 0),
             deliveries_required=obs_data.get("deliveries_required", 1),
             distance_to_target=obs_data.get("distance_to_target", 0.0),
+            assembly_progress=obs_data.get("assembly_progress", []),
             done=done,
             reward=reward,
+            metadata=obs_data.get("metadata") or {},
         )
 
         return StepResult(

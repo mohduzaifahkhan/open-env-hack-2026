@@ -382,8 +382,12 @@ def get_ai_action(
 
         action = _parse_action(ai_text)
 
-        # ── Minimal physical safety: prevent wall/OOB crashes only ──
-        action = _safety_check(action, y, x, grid, grid_size, best_action)
+        # ── Safety: prevent wall crashes AND invalid GRAB/PLACE ──
+        action = _safety_check(
+            action, y, x, grid, grid_size, best_action,
+            carrying=carrying, all_pickups=all_pickups, dropoffs=dropoffs,
+            actual_dist=actual_dist,
+        )
 
         return action
 
@@ -396,12 +400,47 @@ def get_ai_action(
 
 
 def _safety_check(action: int, y: int, x: int, grid: list, grid_size: int,
-                   best_action: int = None) -> int:
+                   best_action: int = None, carrying: int = 0,
+                   all_pickups: list = None, dropoffs: list = None,
+                   actual_dist: float = 0) -> int:
     """
-    Minimal physical safety — ONLY prevents wall collisions and out-of-bounds.
-    Does NOT override logical decisions (GRAB/PLACE) — that's the LLM's call.
-    If a move is blocked, redirects to the pre-computed best direction.
+    Safety layer — prevents both physical AND logical errors:
+    1. Wall collisions and out-of-bounds moves
+    2. GRAB when not at a pickup or already carrying
+    3. PLACE when not at a dropoff or not carrying
+    Redirects to BFS best_action when the LLM picks an invalid action.
     """
+    pos = (y, x)
+
+    # ── Logical validation: GRAB ──
+    if action == 1:  # GRAB
+        at_pickup = all_pickups and pos in [tuple(p) for p in all_pickups]
+        # Also trust GRAB if distance to target is 0 (we're at the right place)
+        if not at_pickup and actual_dist != 0:
+            if best_action is not None:
+                return best_action
+            return 0
+        if carrying == 1:
+            # Already carrying — can't grab again
+            if best_action is not None:
+                return best_action
+            return 0
+
+    # ── Logical validation: PLACE ──
+    if action == 2:  # PLACE
+        at_dropoff = dropoffs and pos in [tuple(d) for d in dropoffs]
+        # Also trust PLACE if distance to target is 0 and carrying
+        if not at_dropoff and actual_dist != 0:
+            if best_action is not None:
+                return best_action
+            return 0
+        if carrying == 0:
+            # Not carrying — can't place
+            if best_action is not None:
+                return best_action
+            return 0
+
+    # ── Physical validation: movement ──
     move_map = {3: (0, -1), 4: (0, 1), 5: (-1, 0), 6: (1, 0)}
 
     if action in move_map:
