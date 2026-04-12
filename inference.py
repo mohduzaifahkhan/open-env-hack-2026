@@ -188,10 +188,28 @@ def get_ai_action(
             elif grid[gy][gx] == 4:
                 dropoffs.append((gy, gx))
 
+    # ── Get next required part info from metadata ──
+    metadata = observation.get("metadata", {})
+    next_required = metadata.get("next_required")
+    pickup_parts_map = metadata.get("pickup_parts", {})
+
     # ── Determine target ──
     if carrying == 0:
         target_type = "PICKUP"
-        if pickups:
+        # Target the correct pickup for the next required part
+        if next_required and pickup_parts_map:
+            correct_pickups = []
+            for pos_str, part_type in pickup_parts_map.items():
+                if part_type == next_required:
+                    coords = pos_str.split(",")
+                    correct_pickups.append((int(coords[0]), int(coords[1])))
+            if correct_pickups:
+                target = min(correct_pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
+            elif pickups:
+                target = min(pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
+            else:
+                target = (0, 0)
+        elif pickups:
             target = min(pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
         else:
             target = (0, 0)

@@ -459,36 +459,38 @@ class SmartFactoryEnvironment(
                     if part_type != expected:
                         correct_order = False
 
+                # Always place the part (prevents agent from getting stuck)
+                self._carrying = 0
+                self._carrying_type = None
+                self._deliveries_made += 1
+
+                # Track assembly progress
+                if part_type:
+                    self._assembly_progress.append(part_type)
+
+                # Decrement inventory
+                if part_type and part_type in self._inventory:
+                    self._inventory[part_type] = max(0, self._inventory[part_type] - 1)
+                    if self._inventory[part_type] == 0:
+                        del self._inventory[part_type]
+
                 if correct_order:
-                    # Check quality — defective parts don't count
+                    # Advance sequence only on correct order
+                    self._next_delivery_idx += 1
+
+                    # Check quality — defective parts give reduced reward
                     is_defective = False
                     if self._quality_inspection and part_type:
-                        # Check if the part came from a defective station
                         for pos, ptype in self._pickup_parts.items():
                             if ptype == part_type and self._part_qualities.get(pos) == "defective":
                                 is_defective = True
                                 break
-
-                    self._carrying = 0
-                    self._carrying_type = None
-                    self._deliveries_made += 1
-                    self._next_delivery_idx += 1
-
-                    # Track assembly progress
-                    if part_type:
-                        self._assembly_progress.append(part_type)
 
                     # Assembly sequence bonus
                     assembly_bonus = 1.0
                     if len(self._assembly_progress) == len(self._delivery_order):
                         if self._assembly_progress == self._delivery_order:
                             assembly_bonus = 1.5  # Perfect assembly sequence!
-
-                    # Decrement inventory
-                    if part_type and part_type in self._inventory:
-                        self._inventory[part_type] = max(0, self._inventory[part_type] - 1)
-                        if self._inventory[part_type] == 0:
-                            del self._inventory[part_type]
 
                     # Speed bonus
                     steps_fraction = self._step_count / self._max_steps
@@ -498,14 +500,14 @@ class SmartFactoryEnvironment(
                         reward += 0.5  # Reduced reward for defective part
                     else:
                         reward += (5.0 + speed_bonus) * assembly_bonus
-
-                    # Check completion
-                    if self._deliveries_made >= self._deliveries_required:
-                        efficiency = self._deliveries_made / max(1, self._step_count)
-                        reward += 3.0 * efficiency * 10.0  # scale up
-                        self._done = True
                 else:
-                    reward += -0.5  # wrong order penalty
+                    reward += 1.0  # Reduced reward for wrong-order delivery
+
+                # Check completion
+                if self._deliveries_made >= self._deliveries_required:
+                    efficiency = self._deliveries_made / max(1, self._step_count)
+                    reward += 3.0 * efficiency * 10.0  # scale up
+                    self._done = True
             else:
                 reward += -0.1  # useless place
 
@@ -639,6 +641,14 @@ class SmartFactoryEnvironment(
                 "broken_pickups": list(self._broken_pickups),
                 "inspection_results": inspection_info,
                 "rubric": dict(self._rubric),
+                "next_required": (
+                    self._delivery_order[self._next_delivery_idx]
+                    if self._next_delivery_idx < len(self._delivery_order)
+                    else None
+                ),
+                "pickup_parts": {
+                    f"{p[0]},{p[1]}": t for p, t in self._pickup_parts.items()
+                },
             },
         )
 
@@ -646,11 +656,20 @@ class SmartFactoryEnvironment(
         """Compute Manhattan distance to the current logical target."""
         pos = tuple(self._robot_pos)
         if self._carrying == 0:
-            # Target = nearest non-broken pickup
-            targets = [
-                p for p in self._pickup_positions
-                if p not in self._broken_pickups
-            ]
+            # Target = pickup with the correct next part type
+            targets = None
+            if self._ordered_delivery and self._next_delivery_idx < len(self._delivery_order):
+                needed_type = self._delivery_order[self._next_delivery_idx]
+                targets = [
+                    p for p in self._pickup_positions
+                    if p not in self._broken_pickups
+                    and self._pickup_parts.get(p) == needed_type
+                ]
+            if not targets:
+                targets = [
+                    p for p in self._pickup_positions
+                    if p not in self._broken_pickups
+                ]
             if not targets:
                 targets = list(self._pickup_positions)
         else:

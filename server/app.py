@@ -99,6 +99,9 @@ def _demo_heuristic_action(observation: dict) -> tuple:
     grid = observation.get("grid_layout", [])
     grid_size = len(grid) if grid else 5
     distance = observation.get("distance_to_target", 99)
+    metadata = observation.get("metadata", {})
+    next_required = metadata.get("next_required")
+    pickup_parts_map = metadata.get("pickup_parts", {})
 
     # At target
     if distance == 0:
@@ -107,7 +110,7 @@ def _demo_heuristic_action(observation: dict) -> tuple:
         else:
             return 2, "At dropoff — placing part"
 
-    # Find targets
+    # Find targets from grid
     pickups = []
     dropoffs = []
     for gy in range(grid_size):
@@ -118,11 +121,24 @@ def _demo_heuristic_action(observation: dict) -> tuple:
                 dropoffs.append((gy, gx))
 
     if carrying == 0:
-        if pickups:
+        # Target the correct pickup for the next required part
+        if next_required and pickup_parts_map:
+            correct_pickups = []
+            for pos_str, part_type in pickup_parts_map.items():
+                if part_type == next_required:
+                    coords = pos_str.split(",")
+                    correct_pickups.append((int(coords[0]), int(coords[1])))
+            if correct_pickups:
+                target = min(correct_pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
+            elif pickups:
+                target = min(pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
+            else:
+                target = (0, 0)
+        elif pickups:
             target = min(pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
         else:
             target = (0, 0)
-        target_name = "pickup"
+        target_name = f"pickup ({next_required or 'part'})"
     else:
         if dropoffs:
             target = min(dropoffs, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
