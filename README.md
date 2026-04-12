@@ -27,7 +27,7 @@ Open the Space to see a **live visual demo** of the AI agent navigating the fact
 
 | Feature | Description |
 |---------|-------------|
-| 🤖 **LLM-Powered Agent** | Every decision made by Llama-3.2-1B-Instruct via few-shot prompting |
+| 🤖 **Hybrid AI Agent** | LLM (Llama-3.2-1B) handles strategy + BFS pathfinding navigates around obstacles |
 | 🏗️ **Assembly Line Mechanic** | Parts must be delivered in correct sequence for bonus multipliers |
 | 🔍 **Quality Inspection** | Stations produce defective parts (15%) — agent must manage risk |
 | 📊 **Grading Rubric** | 5-metric weighted scoring system for agent evaluation |
@@ -41,12 +41,13 @@ Open the Space to see a **live visual demo** of the AI agent navigating the fact
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                       Client / Agent Layer                       │
+│                    Hybrid AI Agent Layer                          │
 │  ┌──────────────────┐    ┌────────────────────────────────────┐  │
-│  │ SmartFactoryEnv  │    │ inference.py (LLM Agent)           │  │
-│  │ (WebSocket)      │    │ • Llama-3.2-1B via HF Router       │  │
-│  │                  │    │ • Few-shot prompting                │  │
-│  └────────┬─────────┘    │ • Conversation history              │  │
+│  │ SmartFactoryEnv  │    │ inference.py (Hybrid Agent)         │  │
+│  │ (WebSocket)      │    │ • Llama-3.2-1B — action selection   │  │
+│  │                  │    │ • BFS pathfinding — wall avoidance  │  │
+│  └────────┬─────────┘    │ • Stuck detection + escape logic   │  │
+│           │              │ • Few-shot + conversation history   │  │
 │           │              └────────────────┬───────────────────┘  │
 └───────────┼───────────────────────────────┼──────────────────────┘
             │ WebSocket / HTTP              │
@@ -129,10 +130,10 @@ Open the Space to see a **live visual demo** of the AI agent navigating the fact
 | Metric | Weight | Description |
 |--------|--------|-------------|
 | Completion Rate | 40% | deliveries_made / deliveries_required |
-| Efficiency | 25% | Deliveries per steps taken |
+| Efficiency | 25% | Optimal steps per delivery vs. actual (grid_size × 2 / steps_per_delivery) |
 | No Collisions | 15% | 1 − (collisions / steps) |
 | Hazard Safety | 10% | 1 − (hazard_steps / steps) |
-| Speed | 10% | Steps remaining when done / max_steps |
+| Speed | 10% | (time_remaining / max_steps) × completion_fraction |
 
 ---
 
@@ -200,13 +201,16 @@ This environment is fully compliant with `openenv-core>=0.2.2`:
 
 ```
 open-env-hack-2026/
-├── inference.py             # LLM agent (Llama-3.2-1B) with few-shot prompting
+├── inference.py             # LLM agent (Llama-3.2-1B) with BFS + few-shot prompting
 ├── models.py                # FactoryAction, FactoryObservation, FactoryState
 ├── client.py                # SmartFactoryEnv(EnvClient) — WebSocket client
+├── test_smoke.py            # Pytest test suite (41 tests)
 ├── openenv.yaml             # OpenEnv manifest (spec_version: 1)
 ├── pyproject.toml           # Dependencies and packaging
 ├── Dockerfile               # HuggingFace Spaces deployment
 ├── requirements.txt         # Server dependencies
+├── LICENSE                  # BSD-3-Clause license
+├── .gitignore               # Python/IDE/OS exclusions
 ├── README.md                # This file
 └── server/
     ├── environment.py        # SmartFactoryEnvironment with rubric + assembly
@@ -251,7 +255,7 @@ Model: meta-llama/Llama-3.2-1B-Instruct
 
 ## 🏆 What Makes This Special
 
-1. **Genuine LLM Decision-Making** — Every action is decided by Llama-3.2-1B via few-shot prompting. No hardcoded navigation heuristics.
+1. **Hybrid AI Architecture** — LLM (Llama-3.2-1B) interprets environment state and selects actions via few-shot prompting, assisted by BFS pathfinding for wall-aware navigation. Mirrors real-world robotic architectures (similar to Google's SayCan) where LLMs handle high-level strategy while algorithms handle spatial execution.
 
 2. **Assembly Line Mechanic** — Not just pickup-deliver; parts must follow a manufacturing sequence (gear → chip → frame) for bonus rewards.
 
@@ -260,6 +264,8 @@ Model: meta-llama/Llama-3.2-1B-Instruct
 4. **Built-in Grading Rubric** — 5-metric weighted scoring exposed via `/metrics` and in every observation, enabling automated evaluation.
 
 5. **Live Visual Renderer** — Beautiful animated web UI showing the AI agent in real-time with thought bubbles and rubric scores.
+
+6. **Robust Agent Design** — BFS pathfinding around walls, stuck-loop detection with escape heuristics, and graceful LLM failure fallbacks ensure reliable multi-delivery completion across all 3 difficulty tiers.
 
 ---
 

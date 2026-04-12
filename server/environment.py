@@ -225,15 +225,24 @@ class SmartFactoryEnvironment(
         self._rubric["completion_rate"] = (
             self._deliveries_made / max(1, self._deliveries_required)
         )
-        self._rubric["efficiency"] = min(
-            1.0, self._deliveries_made / (steps * 0.05)
-        )
+
+        # Efficiency: how many steps per delivery vs. optimal (grid_size steps)
+        # Lower steps-per-delivery = higher efficiency
+        if self._deliveries_made > 0:
+            steps_per_delivery = steps / self._deliveries_made
+            optimal_steps = self._grid_size * 2  # rough optimal baseline
+            self._rubric["efficiency"] = min(1.0, optimal_steps / steps_per_delivery)
+        else:
+            self._rubric["efficiency"] = 0.0
+
         self._rubric["collision_rate"] = min(1.0, self._collisions / steps)
         self._rubric["hazard_exposure"] = min(1.0, self._hazard_steps / steps)
 
-        if self._done and self._deliveries_made >= self._deliveries_required:
+        # Speed score: proportional credit even for partial completion
+        if self._done:
             time_remaining = max(0, self._max_steps - self._step_count)
-            self._rubric["speed_score"] = time_remaining / self._max_steps
+            completion_frac = self._deliveries_made / max(1, self._deliveries_required)
+            self._rubric["speed_score"] = (time_remaining / self._max_steps) * completion_frac
         else:
             self._rubric["speed_score"] = 0.0
 
@@ -519,10 +528,10 @@ class SmartFactoryEnvironment(
         elif act == A_INSPECT:
             pos_tuple = (self._robot_pos[0], self._robot_pos[1])
             if self._quality_inspection and pos_tuple in self._pickup_parts:
-                self._inspected_stations.add(pos_tuple)
-                # Small reward for smart inspection
+                # Small reward for first-time inspection of this station
                 if pos_tuple not in self._inspected_stations:
                     reward += 0.1
+                self._inspected_stations.add(pos_tuple)
             # Costs a step but reveals quality info via metadata
 
         # --- Distance-based reward shaping ---

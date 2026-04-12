@@ -92,8 +92,36 @@ async def metrics():
 # Demo WebSocket — runs a heuristic agent and streams state to viewer
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _bfs_next_step(y, x, ty, tx, grid, grid_size):
+    """BFS from (y,x) to (ty,tx) avoiding walls. Returns first move action."""
+    from collections import deque
+    if y == ty and x == tx:
+        return None
+    visited = {(y, x)}
+    queue = deque()
+    moves = [(5, -1, 0), (6, 1, 0), (3, 0, -1), (4, 0, 1)]
+    for action, dy, dx in moves:
+        ny, nx = y + dy, x + dx
+        if 0 <= ny < grid_size and 0 <= nx < grid_size and grid[ny][nx] != 1:
+            if ny == ty and nx == tx:
+                return action
+            visited.add((ny, nx))
+            queue.append((ny, nx, action))
+    while queue:
+        cy, cx, first_action = queue.popleft()
+        for _, dy, dx in moves:
+            ny, nx = cy + dy, cx + dx
+            if (ny, nx) not in visited and 0 <= ny < grid_size and 0 <= nx < grid_size:
+                if grid[ny][nx] != 1:
+                    if ny == ty and nx == tx:
+                        return first_action
+                    visited.add((ny, nx))
+                    queue.append((ny, nx, first_action))
+    return None
+
+
 def _demo_heuristic_action(observation: dict) -> tuple:
-    """Simple heuristic agent for demo visualization. Returns (action, thought)."""
+    """BFS-powered heuristic agent for demo visualization. Returns (action, thought)."""
     y, x = observation["robot_pos"]
     carrying = observation["carrying"]
     grid = observation.get("grid_layout", [])
@@ -110,6 +138,12 @@ def _demo_heuristic_action(observation: dict) -> tuple:
         else:
             return 2, "At dropoff — placing part"
 
+    # Build pickup list from metadata (reliable even when robot covers the cell)
+    pickups_from_meta = []
+    for pos_str in pickup_parts_map:
+        coords = pos_str.split(",")
+        pickups_from_meta.append((int(coords[0]), int(coords[1])))
+
     # Find targets from grid
     pickups = []
     dropoffs = []
@@ -119,6 +153,8 @@ def _demo_heuristic_action(observation: dict) -> tuple:
                 pickups.append((gy, gx))
             elif grid[gy][gx] == 4:
                 dropoffs.append((gy, gx))
+
+    all_pickups = list(set(pickups_from_meta + pickups))
 
     if carrying == 0:
         # Target the correct pickup for the next required part
@@ -130,12 +166,12 @@ def _demo_heuristic_action(observation: dict) -> tuple:
                     correct_pickups.append((int(coords[0]), int(coords[1])))
             if correct_pickups:
                 target = min(correct_pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
-            elif pickups:
-                target = min(pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
+            elif all_pickups:
+                target = min(all_pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
             else:
                 target = (0, 0)
-        elif pickups:
-            target = min(pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
+        elif all_pickups:
+            target = min(all_pickups, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
         else:
             target = (0, 0)
         target_name = f"pickup ({next_required or 'part'})"
@@ -147,33 +183,18 @@ def _demo_heuristic_action(observation: dict) -> tuple:
         target_name = "dropoff"
 
     ty, tx = target
-    dy = ty - y
-    dx = tx - x
 
+    # Use BFS for wall-aware pathfinding
+    bfs_action = _bfs_next_step(y, x, ty, tx, grid, grid_size)
+    action_names = {3: "LEFT", 4: "RIGHT", 5: "UP", 6: "DOWN"}
+
+    if bfs_action is not None:
+        return bfs_action, f"Moving {action_names.get(bfs_action, '?')} toward {target_name}"
+
+    # Fallback: try any safe direction
     def is_safe(ny, nx):
         return 0 <= ny < grid_size and 0 <= nx < grid_size and grid[ny][nx] != 1
 
-    # Move toward target
-    if abs(dy) >= abs(dx):
-        if dy < 0 and is_safe(y - 1, x):
-            return 5, f"Moving UP toward {target_name}"
-        if dy > 0 and is_safe(y + 1, x):
-            return 6, f"Moving DOWN toward {target_name}"
-        if dx < 0 and is_safe(y, x - 1):
-            return 3, f"Moving LEFT toward {target_name}"
-        if dx > 0 and is_safe(y, x + 1):
-            return 4, f"Moving RIGHT toward {target_name}"
-    else:
-        if dx < 0 and is_safe(y, x - 1):
-            return 3, f"Moving LEFT toward {target_name}"
-        if dx > 0 and is_safe(y, x + 1):
-            return 4, f"Moving RIGHT toward {target_name}"
-        if dy < 0 and is_safe(y - 1, x):
-            return 5, f"Moving UP toward {target_name}"
-        if dy > 0 and is_safe(y + 1, x):
-            return 6, f"Moving DOWN toward {target_name}"
-
-    # Try any safe direction
     for act, ny, nx, name in [(5, y-1, x, "UP"), (6, y+1, x, "DOWN"),
                                (3, y, x-1, "LEFT"), (4, y, x+1, "RIGHT")]:
         if is_safe(ny, nx):
